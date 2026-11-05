@@ -83,6 +83,9 @@ export function enablePassphraseToggle(input, button) {
   });
 }
 
+const labels = new WeakMap();
+const restore = new WeakMap();
+
 export function enableCopy(button, value, status, emptyMessage) {
   button.addEventListener("click", async () => {
     const text = value();
@@ -93,6 +96,18 @@ export function enableCopy(button, value, status, emptyMessage) {
     try {
       await navigator.clipboard.writeText(text);
       status.textContent = "Copied.";
+      // Show it on the button itself, then restore its label.
+      clearTimeout(restore.get(button));
+      if (!labels.has(button)) labels.set(button, button.textContent);
+      button.textContent = "Copied";
+      button.classList.add("copied");
+      restore.set(
+        button,
+        setTimeout(() => {
+          button.textContent = labels.get(button);
+          button.classList.remove("copied");
+        }, 2000),
+      );
     } catch {
       status.textContent =
         "Copy unavailable. Select the text and copy it manually.";

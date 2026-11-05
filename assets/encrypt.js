@@ -61,33 +61,75 @@ function updateViewHelp() {
 views.addEventListener("input", updateViewHelp);
 updateViewHelp();
 
-function appendLink(label, path, values, identifier) {
-  const url = new URL(path, window.location.origin);
-  url.hash = new URLSearchParams(values).toString();
-  const title = document.createElement("p");
-  title.textContent = label;
-  const link = document.createElement("a");
-  link.id = identifier;
-  link.href = url.href;
-  link.textContent = url.href;
-  // A new tab keeps this page, and the revocation token that exists only here, intact.
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
+// One card of the share view: a label, the value (a link, or the masked passphrase) and its
+// Copy button. Copy feedback shows on the button; the status line is for screen readers.
+function shareCard(label, identifier, copyLabel, { href, secret }) {
   const section = document.createElement("section");
   section.className = "link-card";
-  if (identifier === "revocation-link") section.classList.add("private-link");
+  const title = document.createElement("p");
+  title.textContent = label;
+  let field;
+  if (href) {
+    field = document.createElement("a");
+    field.href = href;
+    field.textContent = href;
+    // A new tab keeps this page, and the revocation token that exists only here, intact.
+    field.target = "_blank";
+    field.rel = "noopener noreferrer";
+  } else {
+    field = document.createElement("input");
+    field.type = "password";
+    field.readOnly = true;
+    field.value = secret;
+    field.autocomplete = "off";
+    field.spellcheck = false;
+    field.setAttribute("aria-label", label);
+  }
+  field.id = identifier;
+  const buttons = document.createElement("div");
+  buttons.className = "actions";
   const copy = document.createElement("button");
   copy.type = "button";
   copy.id = `copy-${identifier}`;
-  copy.textContent =
-    identifier === "recipient-link"
-      ? "Copy share link"
-      : "Copy private revocation link";
+  copy.textContent = copyLabel;
   const feedback = document.createElement("p");
+  feedback.className = "visually-hidden";
   feedback.setAttribute("role", "status");
-  enableCopy(copy, () => link.href, feedback, "No link available.");
-  section.append(title, link, copy, feedback);
-  result.append(section);
+  enableCopy(copy, () => href || field.value, feedback, "Nothing to copy.");
+  if (!href) {
+    const show = document.createElement("button");
+    show.type = "button";
+    show.id = `show-${identifier}`;
+    show.textContent = "Show";
+    show.setAttribute("aria-pressed", "false");
+    show.addEventListener("click", () => {
+      const visible = field.type === "password";
+      field.type = visible ? "text" : "password";
+      show.textContent = visible ? "Hide" : "Show";
+      show.setAttribute("aria-pressed", String(visible));
+    });
+    buttons.append(show);
+  }
+  buttons.append(copy);
+  section.append(title, field, buttons, feedback);
+  return section;
+}
+
+function shareLink(path, values) {
+  const url = new URL(path, window.location.origin);
+  url.hash = new URLSearchParams(values).toString();
+  return url.href;
+}
+
+// Back to an empty form for the next secret.
+function startOver() {
+  linksShown = false;
+  result.replaceChildren();
+  result.className = "";
+  result.style.display = "none";
+  result.style.minHeight = "";
+  form.hidden = false;
+  text.focus();
 }
 
 form.addEventListener("submit", async (event) => {
@@ -136,19 +178,39 @@ form.addEventListener("submit", async (event) => {
       "Connection interrupted. The secret may have been stored, but its links were lost. Create it again.",
     );
     linksShown = true;
-    showResult(result, "Secret encrypted and stored.");
-    appendLink(
-      "Share this link and send the passphrase separately:",
-      "/decrypt",
-      { id: sealed.request.envelope.metadata.id },
-      "recipient-link",
+    // Replace the form with the share view, keeping the box the same height. The passphrase
+    // stays available here, so copying the link first can no longer lose it.
+    const height = form.offsetHeight;
+    const id = sealed.request.envelope.metadata.id;
+    showResult(
+      result,
+      "Secret encrypted. Send the link and the passphrase separately.",
     );
-    appendLink(
-      "Keep this revocation link private. It deletes the secret without reading it:",
-      "/revoke",
-      { id: sealed.request.envelope.metadata.id, token: sealed.deletionToken },
+    const again = document.createElement("button");
+    again.type = "button";
+    again.id = "new-secret";
+    again.className = "submit-btn";
+    again.textContent = "Create another secret";
+    again.addEventListener("click", startOver);
+    const revocation = shareCard(
+      "Revocation link: keep it private. It deletes the secret unread.",
       "revocation-link",
+      "Copy revocation link",
+      { href: shareLink("/revoke", { id, token: sealed.deletionToken }) },
     );
+    revocation.classList.add("private-link");
+    result.append(
+      shareCard("Passphrase:", "shared-passphrase", "Copy passphrase", {
+        secret: password.value,
+      }),
+      shareCard("Share link:", "recipient-link", "Copy share link", {
+        href: shareLink("/decrypt", { id }),
+      }),
+      revocation,
+      again,
+    );
+    form.hidden = true;
+    result.style.minHeight = `${height}px`;
     text.value = "";
     password.value = "";
     status.textContent = "Keep the saved passphrase. It cannot be recovered.";
@@ -157,7 +219,7 @@ form.addEventListener("submit", async (event) => {
   } finally {
     submitting = false;
     updateTextSize();
-    button.textContent = "Encrypt & Store";
+    button.textContent = "Encrypt & Share";
   }
 });
 // Leaving loses the revocation link for good, so ask first while the links are shown.
@@ -167,5 +229,9 @@ window.addEventListener("beforeunload", (event) => {
 window.addEventListener("pagehide", () => {
   password.value = "";
   text.value = "";
+  linksShown = false;
   result.replaceChildren();
+  result.style.display = "none";
+  result.style.minHeight = "";
+  form.hidden = false;
 });
