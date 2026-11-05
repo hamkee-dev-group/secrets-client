@@ -1,7 +1,13 @@
 import { decode } from "./crypto.js";
-import { requestJSON, showResult, uuidPattern } from "./common.js";
+import {
+  requestJSON,
+  requireSupport,
+  showResult,
+  uuidPattern,
+} from "./common.js";
 const button = document.getElementById("revoke-btn");
 const result = document.getElementById("result");
+requireSupport(result);
 let identifier;
 let token;
 let generation = 0;
@@ -27,7 +33,11 @@ button.addEventListener("click", async () => {
   button.disabled = true;
   button.textContent = "Revoking...";
   try {
-    await requestJSON(`/api/secrets/${identifier}/revoke`, { token });
+    await requestJSON(
+      `/api/secrets/${identifier}/revoke`,
+      { token },
+      "Connection interrupted. The secret may already be revoked; try again to confirm.",
+    );
     if (current !== generation) return;
     token = "";
     history.replaceState(null, "", "/revoke");
@@ -35,7 +45,8 @@ button.addEventListener("click", async () => {
   } catch (error) {
     if (current !== generation) return;
     showResult(result, error.message, true);
-    button.disabled = false;
+    // Already gone (revoked, consumed or expired): retrying cannot help.
+    button.disabled = error.status === 404;
   } finally {
     if (current === generation) button.textContent = "Permanently revoke";
   }

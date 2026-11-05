@@ -5,8 +5,10 @@ import {
   uuidPattern,
   enableCopy,
   enablePassphraseToggle,
+  requireSupport,
 } from "./common.js";
 const form = document.getElementById("decrypt-form");
+requireSupport(document.getElementById("result"));
 form.querySelector("fieldset").disabled = false;
 const password = document.getElementById("passphrase");
 const button = document.getElementById("submit-btn");
@@ -21,6 +23,7 @@ let generation = 0;
 let clearTimer;
 let plaintext = "";
 let metadata;
+let revealing = false;
 enablePassphraseToggle(password, toggle);
 enableCopy(copy, () => plaintext, copyStatus, "No secret to copy.");
 
@@ -61,7 +64,11 @@ async function loadSecret() {
   }
   details.textContent = "Checking availability...";
   try {
-    const status = await requestJSON(`/api/secrets/${identifier}/status`);
+    const status = await requestJSON(
+      `/api/secrets/${identifier}/status`,
+      undefined,
+      "Could not reach the server. No view was used; try again.",
+    );
     if (current !== generation) return;
     validateMetadata(status.metadata);
     if (
@@ -100,9 +107,12 @@ form.addEventListener("submit", async (event) => {
   try {
     credentials = await deriveCredentials(password.value, expectedMetadata);
     if (current !== generation) return;
-    const envelope = await requestJSON(`/api/secrets/${requestedId}/retrieve`, {
-      token: credentials.retrievalToken,
-    });
+    revealing = true;
+    const envelope = await requestJSON(
+      `/api/secrets/${requestedId}/retrieve`,
+      { token: credentials.retrievalToken },
+      "Connection interrupted. A view may have been used; if the secret no longer opens, ask the sender for a new one.",
+    );
     if (current !== generation) return;
     const decoded = await open(envelope, credentials, expectedMetadata);
     if (current !== generation) return;
@@ -119,6 +129,7 @@ form.addEventListener("submit", async (event) => {
     showResult(result, error.message, true);
     if (error.status === 404) form.hidden = true;
   } finally {
+    revealing = false;
     if (credentials) credentials.retrievalToken = "";
     if (current === generation) {
       password.value = "";
@@ -130,6 +141,10 @@ form.addEventListener("submit", async (event) => {
 });
 retry.addEventListener("click", loadSecret);
 window.addEventListener("hashchange", loadSecret);
+// The server has used the view before it answers: leaving now would lose the secret unseen.
+window.addEventListener("beforeunload", (event) => {
+  if (revealing) event.preventDefault();
+});
 window.addEventListener("pagehide", () => {
   generation++;
   clearSecret();

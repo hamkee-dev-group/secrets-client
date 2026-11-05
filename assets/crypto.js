@@ -21,9 +21,14 @@ export function decode(value, minimum, maximum = minimum) {
     !/^[A-Za-z0-9_-]+$/.test(value)
   )
     throw new Error("Invalid encoded value.");
-  const bytes = Uint8Array.from(
-    atob(value.replaceAll("-", "+").replaceAll("_", "/")),
-    (character) => character.charCodeAt(0),
+  let binary;
+  try {
+    binary = atob(value.replaceAll("-", "+").replaceAll("_", "/"));
+  } catch {
+    throw new Error("Invalid encoded value.");
+  }
+  const bytes = Uint8Array.from(binary, (character) =>
+    character.charCodeAt(0),
   );
   if (
     bytes.length < minimum ||

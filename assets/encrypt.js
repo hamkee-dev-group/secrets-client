@@ -4,8 +4,10 @@ import {
   showResult,
   enableCopy,
   enablePassphraseToggle,
+  requireSupport,
 } from "./common.js";
 const form = document.getElementById("encrypt-form");
+requireSupport(document.getElementById("result"));
 form.querySelector("fieldset").disabled = false;
 const text = document.getElementById("secret-text");
 const password = document.getElementById("passphrase");
@@ -117,14 +119,22 @@ form.addEventListener("submit", async (event) => {
     const lifetime = lifetimes.get(expiration.value);
     if (lifetime === undefined)
       throw new Error("Select a valid expiration time.");
-    const clock = await requestJSON("/_health");
+    const clock = await requestJSON(
+      "/_health",
+      undefined,
+      "Could not reach the server. Nothing was stored; try again.",
+    );
     const sealed = await seal(
       text.value,
       password.value,
       viewCount,
       clock.now + lifetime,
     );
-    await requestJSON("/api/secrets", sealed.request);
+    await requestJSON(
+      "/api/secrets",
+      sealed.request,
+      "Connection interrupted. The secret may have been stored, but its links were lost. Create it again.",
+    );
     linksShown = true;
     showResult(result, "Secret encrypted and stored.");
     appendLink(

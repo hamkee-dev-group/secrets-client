@@ -7,7 +7,31 @@ export function showResult(element, message, isError = false) {
   element.style.display = "block";
 }
 
-export async function requestJSON(path, payload) {
+const unsupportedMessage =
+  "This browser cannot encrypt or decrypt secrets. Use a current version of Chrome, Firefox, Safari or Edge.";
+
+// Stops the page with one clear message instead of failing later with a raw TypeError.
+export function requireSupport(result) {
+  const supported =
+    window.isSecureContext &&
+    window.crypto?.subtle &&
+    typeof crypto.getRandomValues === "function" &&
+    typeof crypto.randomUUID === "function" &&
+    typeof String.prototype.replaceAll === "function" &&
+    typeof fetch === "function" &&
+    typeof AbortController === "function" &&
+    typeof TextEncoder === "function";
+  if (supported) return;
+  showResult(result, unsupportedMessage, true);
+  throw new Error(unsupportedMessage);
+}
+
+// `interrupted` is shown when the connection fails: what it means differs per request.
+export async function requestJSON(
+  path,
+  payload,
+  interrupted = "Connection interrupted. Check your connection and try again.",
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
   try {
@@ -31,7 +55,7 @@ export async function requestJSON(path, payload) {
     }
     if (!response.ok) {
       const error = new Error(
-        typeof data.error === "string"
+        typeof data?.error === "string"
           ? data.error
           : `Request failed (${response.status}).`,
       );
@@ -41,9 +65,7 @@ export async function requestJSON(path, payload) {
     return data;
   } catch (error) {
     if (error.name === "AbortError" || error instanceof TypeError)
-      throw new Error(
-        "Connection interrupted. The operation may have completed; a retrieval may have consumed a view.",
-      );
+      throw new Error(interrupted);
     throw error;
   } finally {
     clearTimeout(timer);
