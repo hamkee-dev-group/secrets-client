@@ -83,7 +83,7 @@ async function loadSecret() {
     const allowance =
       metadata.max_views === 0
         ? "Unlimited views"
-        : `${status.remaining_views} views remaining at last check`;
+        : `${status.remaining_views} ${status.remaining_views === 1 ? "view" : "views"} remaining at last check`;
     details.textContent = `${allowance}. Expires ${new Date(metadata.expires_at).toLocaleString()}.`;
     form.hidden = false;
   } catch (error) {
