@@ -23,6 +23,7 @@ const noPassphrase = document.getElementById("no-passphrase");
 const copyPassphrase = document.getElementById("copy-passphrase");
 const togglePassphrase = document.getElementById("toggle-passphrase");
 function updatePassphraseMode() {
+  copyPassphrase.closest(".actions").hidden = noPassphrase.checked;
   password.disabled = noPassphrase.checked;
   password.required = !noPassphrase.checked;
   copyPassphrase.disabled = noPassphrase.checked || !password.value;
