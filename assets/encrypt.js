@@ -19,6 +19,26 @@ const button = document.getElementById("submit-btn");
 const result = document.getElementById("result");
 const status = document.getElementById("passphrase-status");
 password.value = "";
+const noPassphrase = document.getElementById("no-passphrase");
+const copyPassphrase = document.getElementById("copy-passphrase");
+const togglePassphrase = document.getElementById("toggle-passphrase");
+function updatePassphraseMode() {
+  password.disabled = noPassphrase.checked;
+  password.required = !noPassphrase.checked;
+  copyPassphrase.disabled = noPassphrase.checked || !password.value;
+  togglePassphrase.disabled = noPassphrase.checked;
+}
+noPassphrase.addEventListener("change", () => {
+  status.textContent = noPassphrase.checked
+    ? "Anyone with the complete share link can read the secret."
+    : "12 characters or more is recommended.";
+  updatePassphraseMode();
+});
+password.addEventListener("input", () => {
+  if (password.value) noPassphrase.checked = false;
+  updatePassphraseMode();
+});
+updatePassphraseMode();
 let submitting = false;
 let linksShown = false;
 const textEncoder = new TextEncoder();
@@ -40,7 +60,9 @@ text.addEventListener("input", updateTextSize);
 updateTextSize();
 
 document.getElementById("generate-passphrase").addEventListener("click", () => {
+  noPassphrase.checked = false;
   password.value = generatePassphrase();
+  updatePassphraseMode();
   status.textContent =
     "Save this passphrase before creating the secret. Share it separately from the link.";
 });
@@ -131,6 +153,9 @@ function startOver() {
   result.style.display = "none";
   result.style.minHeight = "";
   form.hidden = false;
+  noPassphrase.checked = false;
+  updatePassphraseMode();
+  status.textContent = "12 characters or more is recommended.";
   text.focus();
 }
 
@@ -141,6 +166,9 @@ form.addEventListener("submit", async (event) => {
     text.reportValidity();
     return;
   }
+  const linkOnly = noPassphrase.checked;
+  const encryptionSecret = linkOnly ? generatePassphrase() : password.value;
+  const message = text.value;
   submitting = true;
   button.disabled = true;
   button.textContent = "Encrypting...";
@@ -169,8 +197,8 @@ form.addEventListener("submit", async (event) => {
       "Could not reach the server. Nothing was stored; try again.",
     );
     const sealed = await seal(
-      text.value,
-      password.value,
+      message,
+      encryptionSecret,
       viewCount,
       clock.now + lifetime,
     );
@@ -186,7 +214,9 @@ form.addEventListener("submit", async (event) => {
     const id = sealed.request.envelope.metadata.id;
     showResult(
       result,
-      "Secret encrypted. Send the link and the passphrase separately.",
+      linkOnly
+        ? "Secret encrypted. Anyone with the complete share link can read it."
+        : "Secret encrypted. Send the link and the passphrase separately.",
     );
     const again = document.createElement("button");
     again.type = "button";
@@ -194,27 +224,28 @@ form.addEventListener("submit", async (event) => {
     again.className = "submit-btn";
     again.textContent = "Create another secret";
     again.addEventListener("click", startOver);
-    const revocation = shareCard(
-      "Revocation link: keep it private. It deletes the secret unread.",
-      "revocation-link",
-      "Copy revocation link",
-      { href: shareLink("/revoke", { id, token: sealed.deletionToken }) },
+    const management = shareCard(
+      "Management link: keep it private. View activity or revoke access.",
+      "management-link",
+      "Copy management link",
+      { href: shareLink("/manage", { id, token: sealed.deletionToken }) },
     );
-    revocation.classList.add("private-link");
+    management.classList.add("private-link");
+    if (!linkOnly) result.append(shareCard("Passphrase:", "shared-passphrase", "Copy passphrase", {
+      secret: encryptionSecret,
+    }));
     result.append(
-      shareCard("Passphrase:", "shared-passphrase", "Copy passphrase", {
-        secret: password.value,
-      }),
       shareCard("Share link:", "recipient-link", "Copy share link", {
-        href: shareLink("/decrypt", { id }),
+        href: shareLink("/decrypt", linkOnly ? { id, key: encryptionSecret } : { id }),
       }),
-      revocation,
+      management,
       again,
     );
     form.hidden = true;
     result.style.minHeight = `${height}px`;
     text.value = "";
     password.value = "";
+    updatePassphraseMode();
     status.textContent = "Keep the saved passphrase. It cannot be recovered.";
   } catch (error) {
     showResult(result, error.message, true);

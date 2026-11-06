@@ -13,11 +13,16 @@ passphrase or encryption key when using this client.
 - PBKDF2-HMAC-SHA256 with 600,000 iterations and a random salt.
 - HKDF-SHA256 separates encryption keys from retrieval credentials.
 - Optional generation of random 256-bit passphrases.
-- Independent deletion tokens; wrong passphrases do not consume views.
+- Independent management tokens; wrong passphrases do not consume views.
 
 Expiry and view limits are authenticated with the ciphertext. The default view limit is 1; zero
 means unlimited retrieval until expiration. The server enforces these limits;
 recipients can always keep their own copies.
+
+Passphrase-free sharing is an explicit opt-in. It puts a random 256-bit secret in
+the share link’s fragment; anyone with that complete link can decrypt. A private
+management link shows activity and allows revocation. Content-free receipts remain
+until 24 hours after the original expiry.
 
 The files in `assets/` are loaded directly as JavaScript modules by the website.
 See [the protocol](PROTOCOL.md) for the wire format and key derivation, and

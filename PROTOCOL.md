@@ -2,7 +2,8 @@
 
 This document specifies the only supported wire format, `srs-browser-1`. The Rust
 service cannot encrypt or decrypt it. Older server-encrypted records and APIs are
-unsupported. A new SQLite database is required; there are no compatibility migrations.
+unsupported. The current browser-format database migrates from schema 2 to 3
+to add management receipts without changing ciphertext or key derivation.
 
 ## Secrets and authority
 
@@ -12,14 +13,20 @@ Inputs are not trimmed or Unicode-normalized. The optional Generate button uses
 32 random bytes encoded as 43 unpadded base64url characters from the browser CSPRNG.
 The server cannot inspect passphrases.
 
-The passphrase is shared separately from the recipient link. Neither it nor the
-AES key is sent to the service. The sender also generates an independent random
-32-byte deletion token and retains its revocation link privately.
+By default the passphrase is shared separately from the recipient link. The explicit
+No passphrase option instead generates 32 random bytes, base64url encodes them and
+uses that string as the input to the same derivation below. It is included only in
+the recipient URL fragment: `/decrypt#id=<uuid>&key=<random-secret>`. It is not a
+raw AES key. Anyone with the complete link can decrypt. Without this option, the
+recipient link contains only `#id=<uuid>`.
 
-The recipient link contains only `#id=<uuid>`. The revocation link contains
-`#id=<uuid>&token=<deletion-token>`. Fragments are not included in HTTP requests.
-Both links can remain in browser history or clipboard history. Revocation requires
-an explicit POST; loading either page performs no destructive operation.
+Neither the passphrase, random link secret nor AES key is sent to the service.
+The sender generates an independent random 32-byte management token; the wire
+field remains `deletion_hash`. The private management link is
+`/manage#id=<uuid>&token=<management-token>`. It authorizes receipt access and
+revocation, never retrieval. Fragments are not included in HTTP requests but can
+remain in browser or clipboard history. Loading either page is non-destructive;
+retrieval and revocation require an explicit user action.
 
 ## Metadata and encoding
 
@@ -90,7 +97,8 @@ provide the AES key. Neither credential should be logged.
 | `GET /api/secrets/<id>/metadata` | None | Metadata only; no view consumed |
 | `GET /api/secrets/<id>/status` | None | `metadata` and `remaining_views`; no view consumed |
 | `POST /api/secrets/<id>/retrieve` | `{"token":"..."}` | Envelope; one view consumed |
-| `POST /api/secrets/<id>/revoke` | `{"token":"..."}` | `204`; record deleted |
+| `POST /api/secrets/<id>/revoke` | `{"token":"..."}` | `204`; content deleted, receipt marked revoked |
+| `POST /api/secrets/<id>/management` | `{"token":"..."}` | Private receipt; management token required |
 
 An envelope is exactly `{"metadata":{...},"ciphertext":"..."}`. The entire creation
 request is limited to 128 KiB. Client-supplied ciphertext is opaque; the server can
@@ -136,3 +144,30 @@ cleanup; they do not grant access to a record already expired according to serve
 The status endpoint reports a snapshot of remaining views. It can change immediately
 after the response. `remaining_views` is mutable server state, not authenticated
 metadata; it is never included in key derivation or AES-GCM additional data.
+
+## Management receipts
+
+One receipt row per secret records `status` (active, consumed, revoked or expired),
+`max_views`, `views_used`, `last_accessed_at`, `failed_attempts`, `last_failed_at`,
+`ended_at`, `expires_at` and `receipt_expires_at`. Times are Unix milliseconds;
+unknown event times are null. The receipt has no plaintext, ciphertext, salt, nonce
+or retrieval verifier. Its stored management-token hash is never returned.
+
+Successful retrieval increments views and records the last access in the same
+transaction as ciphertext delivery authorization. A final limited retrieval marks
+consumed and removes ciphertext. Revocation removes ciphertext immediately.
+Expiration marks only active receipts expired, preserving earlier terminal states.
+Receipts are removed at original expiry plus 86,400,000 milliseconds. The scheduler
+uses both content and receipt deadlines. Both are checked on access as well.
+
+Failed attempts count well-formed retrieval credentials rejected against a live
+secret. Malformed requests, rate-limited requests, unavailable secrets and failed
+management requests are not counted. Counts and timestamps do not identify people,
+prove successful decryption or establish that a recipient read anything.
+
+Receipt reads use POST to keep credentials out of URL paths/query strings and
+return 404 for both missing receipts and incorrect management credentials.
+Retained receipt IDs cannot be reused. Receipt rows count toward the record quota;
+ciphertext has its separate byte quota. Existing limited secrets migrate their
+used-view count; pre-migration timestamps and failures are unavailable, and past
+unlimited-view accesses cannot be reconstructed.

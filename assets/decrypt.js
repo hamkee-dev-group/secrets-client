@@ -1,4 +1,4 @@
-import { deriveCredentials, open, validateMetadata } from "./crypto.js";
+import { decode, deriveCredentials, open, validateMetadata } from "./crypto.js";
 import {
   requestJSON,
   showResult,
@@ -20,6 +20,7 @@ const copyStatus = document.getElementById("copy-status");
 const retry = document.getElementById("retry-status");
 const toggle = document.getElementById("toggle-passphrase");
 let identifier;
+let linkKey;
 let generation = 0;
 let clearTimer;
 let plaintext = "";
@@ -51,7 +52,10 @@ async function loadSecret() {
   toggle.setAttribute("aria-label", "Show passphrase");
   toggle.title = "Show passphrase";
   toggle.setAttribute("aria-pressed", "false");
-  identifier = new URLSearchParams(location.hash.slice(1)).get("id");
+  const values = new URLSearchParams(location.hash.slice(1));
+  const nextIdentifier = values.get("id");
+  linkKey = values.get("key") ?? (nextIdentifier === identifier ? linkKey : null);
+  identifier = nextIdentifier;
   document.querySelector("#uuid-display .uuid-value").textContent =
     uuidPattern.test(identifier || "") ? identifier : "Invalid identifier";
   details.textContent = "";
@@ -65,6 +69,18 @@ async function loadSecret() {
   }
   details.textContent = "Checking availability...";
   try {
+    if (linkKey !== null) {
+      decode(linkKey, 32);
+      const address = new URL(location.href);
+      address.hash = new URLSearchParams({ id: identifier }).toString();
+      history.replaceState(null, "", address);
+    }
+    password.required = linkKey === null;
+    password.disabled = linkKey !== null;
+    password.closest(".form-group").hidden = linkKey !== null;
+    document.querySelector(".page-description").textContent = linkKey === null
+      ? "Enter the passphrase shared with you to reveal the secret."
+      : "Select Reveal & Decrypt to open the secret. This uses one view.";
     const status = await requestJSON(
       `/api/secrets/${identifier}/status`,
       undefined,
@@ -106,7 +122,7 @@ form.addEventListener("submit", async (event) => {
   form.setAttribute("aria-busy", "true");
   let credentials;
   try {
-    credentials = await deriveCredentials(password.value, expectedMetadata);
+    credentials = await deriveCredentials(linkKey ?? password.value, expectedMetadata);
     if (current !== generation) return;
     revealing = true;
     const envelope = await requestJSON(
@@ -118,6 +134,8 @@ form.addEventListener("submit", async (event) => {
     const decoded = await open(envelope, credentials, expectedMetadata);
     if (current !== generation) return;
     plaintext = decoded;
+    linkKey = null;
+    details.textContent = "One view used by this retrieval.";
     showResult(result, plaintext);
     form.hidden = true;
     copy.hidden = false;
@@ -148,6 +166,7 @@ window.addEventListener("beforeunload", (event) => {
 });
 window.addEventListener("pagehide", () => {
   generation++;
+  linkKey = null;
   clearSecret();
 });
 window.addEventListener("pageshow", (event) => {

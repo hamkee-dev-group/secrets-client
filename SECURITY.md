@@ -24,3 +24,14 @@ malicious JavaScript from using them.
 
 Report vulnerabilities privately to hello@hamkee.net rather than posting secret
 material or an exploit in a public issue.
+
+Management receipts contain access counters and timestamps, which are private
+metadata. They require the independent management token and remain until 24 hours
+after the original secret expiry. Ciphertext is removed upon consumption,
+revocation or expiration. No per-access history or source addresses are recorded
+in receipts. Receipt reads do not consume views. Tokens are bearer capabilities:
+a leaked management link permits viewing metadata and revoking active content.
+
+Link-only keys are removed from the current address-bar entry after validation and
+kept in memory until reveal or navigation. Reloading requires reopening the original
+share link. This cannot erase copies already saved in browser history or sync.
