@@ -4,6 +4,8 @@ import {
   showResult,
   enableCopy,
   enablePassphraseToggle,
+  isMasked,
+  setMasked,
   requireSupport,
 } from "./common.js";
 const form = document.getElementById("encrypt-form");
@@ -78,7 +80,7 @@ function shareCard(label, identifier, copyLabel, { href, secret }) {
     field.rel = "noopener noreferrer";
   } else {
     field = document.createElement("input");
-    field.type = "password";
+    setMasked(field, true);
     field.readOnly = true;
     field.value = secret;
     field.autocomplete = "off";
@@ -103,8 +105,8 @@ function shareCard(label, identifier, copyLabel, { href, secret }) {
     show.textContent = "Show";
     show.setAttribute("aria-pressed", "false");
     show.addEventListener("click", () => {
-      const visible = field.type === "password";
-      field.type = visible ? "text" : "password";
+      const visible = isMasked(field);
+      setMasked(field, !visible);
       show.textContent = visible ? "Hide" : "Show";
       show.setAttribute("aria-pressed", String(visible));
     });

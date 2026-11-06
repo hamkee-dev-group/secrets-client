@@ -72,10 +72,28 @@ export async function requestJSON(
   }
 }
 
+// iOS offers saved passwords for any form with a password field, even with
+// autocomplete off. Where the browser can mask a text field, use that instead.
+const textSecurity = globalThis.CSS?.supports?.("-webkit-text-security", "disc");
+
+export function setMasked(input, masked) {
+  if (textSecurity) {
+    input.type = "text";
+    input.style.setProperty("-webkit-text-security", masked ? "disc" : "none");
+  } else input.type = masked ? "password" : "text";
+}
+
+export function isMasked(input) {
+  return textSecurity
+    ? input.style.getPropertyValue("-webkit-text-security") !== "none"
+    : input.type === "password";
+}
+
 export function enablePassphraseToggle(input, button) {
+  setMasked(input, true);
   button.addEventListener("click", () => {
-    const visible = input.type === "password";
-    input.type = visible ? "text" : "password";
+    const visible = isMasked(input);
+    setMasked(input, !visible);
     const label = visible ? "Hide passphrase" : "Show passphrase";
     button.setAttribute("aria-label", label);
     button.title = label;

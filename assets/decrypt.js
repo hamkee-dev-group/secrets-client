@@ -5,6 +5,7 @@ import {
   uuidPattern,
   enableCopy,
   enablePassphraseToggle,
+  setMasked,
   requireSupport,
 } from "./common.js";
 const form = document.getElementById("decrypt-form");
@@ -46,7 +47,7 @@ async function loadSecret() {
   retry.hidden = true;
   button.disabled = false;
   button.textContent = "Reveal & Decrypt";
-  password.type = "password";
+  setMasked(password, true);
   toggle.setAttribute("aria-label", "Show passphrase");
   toggle.title = "Show passphrase";
   toggle.setAttribute("aria-pressed", "false");
